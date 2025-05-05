@@ -30,3 +30,7 @@ venv/
 *.out
 output/
 exports/
+
+# Ignore Streamlit secrets
+.streamlit/secrets.toml
+
