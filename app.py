@@ -23,10 +23,17 @@ from backend.analyzer import run_full_analysis
 
 # Constants
 SUPPORTED_FORMATS = [".pdf", ".docx"]
+
 AVAILABLE_MODELS = [
     "DeepSeek V3",
-    "DeepSeek V2.5"
+    "DeepSeek Reasoning"
 ]
+
+MODEL_MAP = {
+    "DeepSeek V3": "accounts/fireworks/models/deepseek-v3",
+    "DeepSeek Reasoning": "accounts/fireworks/models/deepseek-r1"
+}
+
 DEFAULT_MODEL = "DeepSeek V3"
 DEFAULT_TOP_K = 8
 
@@ -84,10 +91,13 @@ def process_documents(
                     file_name
                 )
                 
+                # Map model name to API-compatible name
+                model_api_name = MODEL_MAP.get(model_name, "accounts/fireworks/models/deepseek-v3")
+
                 # Run analysis
                 analysis_result = run_full_analysis(
                     chunks,
-                    model_name=model_name,
+                    model_name=model_api_name,
                     temperature=temperature,
                     top_k=top_k
                 )
@@ -104,21 +114,18 @@ def process_documents(
                 The selected model is not available. Please try:
                 1. Using a different model from the dropdown
                 2. Checking your Fireworks API key permissions
-                3. Using 'deepseek-llm-67b-chat' which is usually available
                 """)
             elif "API key" in error_msg.lower():
                 st.info("""
                 There's an issue with your API key. Please:
                 1. Check if your FIREWORKS_API_KEY is set in .env or secrets.toml
                 2. Verify the key is valid in your Fireworks dashboard
-                3. Ensure you have sufficient credits
                 """)
             elif "rate limit" in error_msg.lower():
                 st.info("""
                 You've hit the API rate limit. Please:
                 1. Wait a few minutes before trying again
                 2. Check your usage in the Fireworks dashboard
-                3. Consider upgrading your plan if needed
                 """)
 
 def display_results(file_name: str) -> None:
@@ -154,12 +161,6 @@ def main() -> None:
     # Check for API key from secrets or fallback to .env
     api_key = st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else os.getenv("FIREWORKS_API_KEY")
 
-    # Debugging block
-    st.sidebar.markdown("### 🔍 Debug Info")
-    st.sidebar.code(f"Secrets loaded: {'fireworks' in st.secrets}")
-    st.sidebar.code(f"API key from secrets: {st.secrets.get('fireworks', {}).get('api_key', '❌ Not found')}")
-    st.sidebar.code(f"API key from .env: {os.getenv('FIREWORKS_API_KEY', '❌ Not found')}")
-
     if not api_key:
         st.error("""
         FIREWORKS_API_KEY is not set.
@@ -185,7 +186,7 @@ def main() -> None:
         "Model Name",
         options=AVAILABLE_MODELS,
         index=AVAILABLE_MODELS.index(DEFAULT_MODEL),
-        help="Select the AI model to use for analysis. Some models may require special access."
+        help="Select the AI model to use for analysis."
     )
     
     temperature = st.sidebar.slider(
