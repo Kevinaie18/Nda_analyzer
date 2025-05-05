@@ -151,26 +151,26 @@ def main() -> None:
     """Main application entry point."""
     initialize_session_state()
     
-   # Check for API key from secrets or fallback to .env
-api_key = st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else os.getenv("FIREWORKS_API_KEY")
+    # Check for API key from secrets or fallback to .env
+    api_key = st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else os.getenv("FIREWORKS_API_KEY")
 
-# Debugging block
-st.sidebar.markdown("### 🔍 Debug Info")
-st.sidebar.code(f"Secrets loaded: {'fireworks' in st.secrets}")
-st.sidebar.code(f"API key from secrets: {st.secrets.get('fireworks', {}).get('api_key', '❌ Not found')}")
-st.sidebar.code(f"API key from .env: {os.getenv('FIREWORKS_API_KEY', '❌ Not found')}")
+    # Debugging block
+    st.sidebar.markdown("### 🔍 Debug Info")
+    st.sidebar.code(f"Secrets loaded: {'fireworks' in st.secrets}")
+    st.sidebar.code(f"API key from secrets: {st.secrets.get('fireworks', {}).get('api_key', '❌ Not found')}")
+    st.sidebar.code(f"API key from .env: {os.getenv('FIREWORKS_API_KEY', '❌ Not found')}")
 
-if not api_key:
-    st.error("""
-    FIREWORKS_API_KEY is not set.
+    if not api_key:
+        st.error("""
+        FIREWORKS_API_KEY is not set.
 
-    Please either:
-    1. Add it to `.streamlit/secrets.toml` under [fireworks]
-    2. Or set it locally in a .env file at the project root
+        Please either:
+        1. Add it to `.streamlit/secrets.toml` under [fireworks]
+        2. Or set it locally in a .env file at the project root
 
-    Then restart the application.
-    """)
-    st.stop()
+        Then restart the application.
+        """)
+        st.stop()
     
     # Sidebar configuration
     st.sidebar.title("Configuration")
