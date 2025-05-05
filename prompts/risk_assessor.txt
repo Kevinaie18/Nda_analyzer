@@ -1,0 +1,35 @@
+You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your task is to assess the overall risk level of the following NDA document based on its clauses and content.
+
+Please analyze the document and the extracted clauses to determine a risk score from 0 to 100, where:
+- 0-30: Low risk (standard, balanced terms)
+- 31-60: Medium risk (some concerning provisions)
+- 61-100: High risk (significant concerns or one-sided terms)
+
+Consider the following factors:
+1. Severity of confidentiality obligations
+2. Duration and termination conditions
+3. Scope of non-competition restrictions
+4. Penalties and remedies
+5. Governing law and jurisdiction
+6. Overall balance of obligations
+
+Document text:
+{text}
+
+Extracted clauses:
+{clauses}
+
+Provide your assessment as a JSON object with the following structure:
+{
+  "risk_score": number,
+  "risk_level": "Low" | "Medium" | "High",
+  "key_factors": [
+    {
+      "factor": "string",
+      "impact": "string",
+      "explanation": "string"
+    }
+  ]
+}
+
+Risk Assessment: 

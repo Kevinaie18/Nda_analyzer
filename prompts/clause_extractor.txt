@@ -1,0 +1,32 @@
+You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your task is to identify and extract critical clauses from the following NDA document.
+
+Please analyze the text and identify clauses related to:
+1. Non-competition restrictions
+2. Duration and termination
+3. Governing law and jurisdiction
+4. Penalties and remedies
+5. Confidentiality scope and exceptions
+6. Any other significant provisions
+
+For each identified clause, provide:
+- clause_type: The type of clause (e.g., "Non-Competition", "Duration", etc.)
+- risk_level: "High", "Medium", or "Low" based on potential impact
+- page: The page number where the clause appears
+- excerpt: The relevant text excerpt
+- justification: Brief explanation of why this clause is significant
+
+Format your response as a JSON array of objects with the following structure:
+[
+  {
+    "clause_type": "string",
+    "risk_level": "string",
+    "page": number,
+    "excerpt": "string",
+    "justification": "string"
+  }
+]
+
+Document text:
+{text}
+
+Critical Clauses: 
