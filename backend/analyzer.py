@@ -10,6 +10,8 @@ import os
 import json
 import requests
 from pathlib import Path
+import streamlit as st
+
 
 # Load prompts
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
