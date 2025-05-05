@@ -10,6 +10,7 @@ import os
 import json
 import requests
 from pathlib import Path
+import streamlit as st
 
 # Load prompts
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -36,9 +37,9 @@ def _call_deepseek(
     Returns:
         Model response as a string
     """
-    api_key = os.getenv("FIREWORKS_API_KEY")
+    api_key = st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else os.getenv("FIREWORKS_API_KEY")
     if not api_key:
-        raise ValueError("FIREWORKS_API_KEY environment variable not set")
+        raise ValueError("FIREWORKS_API_KEY not set in secrets or .env")
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -124,4 +125,4 @@ def run_full_analysis(
         "summary": summary,
         "risk_score": risk_score,
         "clauses": clauses
-    } 
+    }
