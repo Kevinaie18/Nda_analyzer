@@ -1,0 +1,32 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+.env
+.env.*
+.cache/
+.venv/
+venv/
+*.log
+*.sqlite
+*.db
+*.bak
+*.swp
+
+# === macOS ===
+.DS_Store
+
+# === VS Code ===
+.vscode/
+*.code-workspace
+
+# === Reports / Temp files ===
+*.pdf
+*.md~
+*.tmp
+*.out
+output/
+exports/
