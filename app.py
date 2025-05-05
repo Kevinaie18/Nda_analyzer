@@ -10,6 +10,7 @@ import os
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 import streamlit as st
+import pandas as pd
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -108,7 +109,7 @@ def process_documents(
             elif "API key" in error_msg.lower():
                 st.info("""
                 There's an issue with your API key. Please:
-                1. Check if your FIREWORKS_API_KEY is set in .env
+                1. Check if your FIREWORKS_API_KEY is set in .env or secrets.toml
                 2. Verify the key is valid in your Fireworks dashboard
                 3. Ensure you have sufficient credits
                 """)
@@ -150,13 +151,18 @@ def main() -> None:
     """Main application entry point."""
     initialize_session_state()
     
-    # Check for API key
-    if not os.getenv("FIREWORKS_API_KEY"):
+    # Check for API key from secrets or fallback to .env
+    api_key = st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else os.getenv("FIREWORKS_API_KEY")
+    
+    if not api_key:
         st.error("""
-        FIREWORKS_API_KEY is not set. Please:
-        1. Create a .env file in the project root
-        2. Add your API key: FIREWORKS_API_KEY=sk-xxxxxx
-        3. Restart the application
+        FIREWORKS_API_KEY is not set.
+
+        Please either:
+        1. Add it to `.streamlit/secrets.toml` under [fireworks]
+        2. Or set it locally in a .env file at the project root
+
+        Then restart the application.
         """)
         st.stop()
     
@@ -250,4 +256,4 @@ def main() -> None:
         )
 
 if __name__ == "__main__":
-    main() 
+    main()
