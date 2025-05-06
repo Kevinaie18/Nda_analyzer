@@ -1,8 +1,8 @@
 """
 Analyzer module for processing NDA documents using DeepSeek.
 
-This version uses CSV‐based clause extraction and robust risk_score parsing
-to avoid any JSON parsing errors.
+Version v1: uses CSV for clause extraction and regex for risk scoring,
+avoiding JSON parsing entirely.
 """
 
 from typing import List, Dict, Any
@@ -25,13 +25,18 @@ def _call_deepseek(
     model_name: str,
     temperature: float = 0.0
 ) -> str:
-    """Call DeepSeek via Fireworks API, forcing deterministic output for structured data."""
+    """
+    Call DeepSeek via Fireworks API with deterministic (0.0) temperature.
+    """
     api_key = os.getenv("FIREWORKS_API_KEY") or (
         st.secrets["fireworks"]["api_key"] if "fireworks" in st.secrets else None
     )
     if not api_key:
-        raise ValueError("FIREWORKS_API_KEY is not set in environment or Streamlit secrets.")
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        raise ValueError("FIREWORKS_API_KEY not set in env or secrets.")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
     data = {
         "model": model_name,
         "prompt": prompt,
@@ -40,7 +45,6 @@ def _call_deepseek(
         "top_p": 1,
         "top_k": 40
     }
-    # hint for JSON/CSV? always force deterministic
     response = requests.post(
         "https://api.fireworks.ai/inference/v1/completions",
         headers=headers,
@@ -53,7 +57,8 @@ def _call_deepseek(
 def parse_clauses_csv(text: str) -> List[Dict[str, Any]]:
     """
     Parse CSV text into a list of clause dicts.
-    Expected format per line: clause_type,risk_level,page,excerpt,justification
+    Expected format per line (no header):
+      clause_type,risk_level,page,excerpt,justification
     """
     lines = [l for l in text.strip().splitlines() if l.strip()]
     reader = csv.reader(lines)
@@ -61,17 +66,17 @@ def parse_clauses_csv(text: str) -> List[Dict[str, Any]]:
     for parts in reader:
         if len(parts) != 5:
             continue
-        ctype, rlevel, page, excerpt, just = parts
+        clause_type, risk_level, page, excerpt, justification = parts
         try:
             page_num = int(page)
         except ValueError:
             page_num = 1
         clauses.append({
-            "clause_type": ctype,
-            "risk_level": rlevel,
+            "clause_type": clause_type,
+            "risk_level": risk_level,
             "page": page_num,
             "excerpt": excerpt,
-            "justification": just
+            "justification": justification
         })
     return clauses
 
@@ -81,13 +86,18 @@ def run_full_analysis(
     temperature: float = 0.0,
     top_k: int = 8
 ) -> Dict[str, Any]:
-    """Run summary, CSV clause extraction, and robust risk scoring."""
-    # 1. Build full text context
+    """
+    Run a full analysis of an NDA document:
+      1) Executive summary
+      2) Clause extraction via CSV
+      3) Risk scoring via regex
+    """
+    # 1. Combine top_k chunks into one text block
     full_text = "\n\n".join(chunk["text"] for chunk in chunks[:top_k])
 
     # 2. Executive summary
     summary_prompt = _load_prompt("summarizer").format(text=full_text)
-    summary = _call_deepseek(summary_prompt, model_name, temperature)
+    summary = _call_deepseek(summary_prompt, model_name, temperature).strip()
 
     # 3. Clause extraction (CSV)
     clause_prompt = _load_prompt("clause_extractor").format(text=full_text)
@@ -107,26 +117,21 @@ def run_full_analysis(
         }]
 
     # 4. Risk scoring
-    # use a prompt that returns plain JSON or plain number, then extract via regex
-    risk_prompt = _load_prompt("risk_assessor").format(
-        text=full_text,
-        clauses=[c for c in clauses]
-    )
-    risk_resp = _call_deepseek(risk_prompt, model_name, temperature)
+    risk_prompt = _load_prompt("risk_assessor").format(text=full_text, clauses=clauses)
+    raw_risk = _call_deepseek(risk_prompt, model_name, temperature)
     with st.expander("🔍 Raw risk output", expanded=False):
-        st.code(risk_resp, language="text")
+        st.code(raw_risk, language="text")
 
-    # robustly extract first integer encountered as risk_score
-    trimmed = risk_resp.strip()
-    match = re.search(r'\b(\d{1,3})\b', trimmed)
+    # Extract first integer as risk_score (0–100)
+    match = re.search(r'\b(\d{1,3})\b', raw_risk)
     if match:
-        risk_score = int(match.group(1))
+        risk_score = max(0, min(100, int(match.group(1))))
     else:
         st.warning("⚠️ Could not extract numeric risk_score; defaulting to 50")
         risk_score = 50
 
     return {
-        "summary": summary.strip(),
+        "summary": summary,
         "risk_score": risk_score,
         "clauses": clauses
     }
