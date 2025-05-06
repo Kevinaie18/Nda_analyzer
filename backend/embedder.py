@@ -1,129 +1,111 @@
 """
-Embedding module for generating and searching document embeddings.
-
-This module provides functionality to generate embeddings using BGE and
-perform similarity search using FAISS.
+Embedder module for transforming text chunks into vector embeddings using Hugging Face models.
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Tuple
+import os
+import streamlit as st
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-import torch
 
-# Initialize the BGE model lazily to avoid Streamlit watcher issues
-_model = None
+# Load Hugging Face token from secrets if available
+hf_token = st.secrets.get("huggingface", {}).get("token", None)
 
-def get_model() -> SentenceTransformer:
-    """Get or initialize the BGE model."""
-    global _model
-    if _model is None:
-        _model = SentenceTransformer('BAAI/bge-small-en-v1.5')
-    return _model
+# Load the embedding model
+@st.cache_resource(show_spinner="Loading embedding model...")
+def load_model():
+    return SentenceTransformer("BAAI/bge-small-en-v1.5", use_auth_token=hf_token)
+
+model = load_model()
+
+def embed_texts(texts: List[str]) -> np.ndarray:
+    """
+    Generate vector embeddings for a list of text chunks.
+
+    Args:
+        texts: A list of strings (chunks)
+
+    Returns:
+        A NumPy array of shape (len(texts), embedding_dim)
+    """
+    return np.array(model.encode(texts, normalize_embeddings=True, show_progress_bar=False))
 
 def build_index(
-    chunks: List[Dict[str, Any]],
-    existing_index: Optional[faiss.Index] = None,
-    existing_meta: Optional[Dict[str, Any]] = None,
-    doc_name: Optional[str] = None
-) -> Tuple[faiss.Index, Dict[str, Any]]:
+    chunks: List[Dict[str, str]],
+    existing_index=None,
+    docs_meta: Dict[str, List[Dict]] = None,
+    file_name: str = "default"
+) -> Tuple[faiss.IndexFlatIP, Dict[str, List[Dict]]]:
     """
-    Build or update a FAISS index with document chunks.
-    
+    Build or update a FAISS index from text chunks.
+
     Args:
-        chunks: List of document chunks
-        existing_index: Optional existing FAISS index
-        existing_meta: Optional existing metadata
-        doc_name: Name of the document being processed
-        
+        chunks: List of dicts with 'text' key
+        existing_index: Existing FAISS index to update (optional)
+        docs_meta: Metadata associated with the index (optional)
+        file_name: Document name for metadata
+
     Returns:
-        Tuple of (FAISS index, metadata dictionary)
+        Updated FAISS index and metadata dictionary
     """
-    # Generate embeddings
     texts = [chunk["text"] for chunk in chunks]
-    model = get_model()
-    embeddings = model.encode(texts, convert_to_numpy=True)
-    
-    # Initialize or update metadata
-    if existing_meta is None:
-        meta = {"chunks": []}
-    else:
-        meta = existing_meta.copy()
-        if "chunks" not in meta:
-            meta["chunks"] = []
-    
-    # Add new chunks to metadata
-    for i, chunk in enumerate(chunks):
-        meta["chunks"].append({
-            "text": chunk["text"],
-            "page": chunk["page"],
-            "metadata": chunk["metadata"]
-        })
-    
-    if doc_name:
-        meta["doc_names"] = set()
-        meta["doc_names"].add(doc_name)
-    
-    # Initialize or update FAISS index
+    embeddings = embed_texts(texts)
+
     if existing_index is None:
-        # Create new index
-        dimension = embeddings.shape[1]
-        index = faiss.IndexFlatL2(dimension)
-        index.add(embeddings)
+        dim = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dim)
     else:
-        # Update existing index
         index = existing_index
-        index.add(embeddings)
-    
-    return index, meta
+
+    index.add(embeddings)
+
+    if docs_meta is None:
+        docs_meta = {}
+
+    if file_name not in docs_meta:
+        docs_meta[file_name] = []
+
+    for i, chunk in enumerate(chunks):
+        docs_meta[file_name].append({
+            "chunk_id": i,
+            "text": chunk["text"],
+            "page": chunk.get("page", 1)
+        })
+
+    return index, docs_meta
 
 def search(
-    index: faiss.Index,
+    index: faiss.IndexFlatIP,
     query: str,
-    meta: Dict[str, Any],
-    doc_name: Optional[str] = None,
-    top_k: int = 8
-) -> List[Dict[str, Any]]:
+    docs_meta: Dict[str, List[Dict]],
+    file_name: str,
+    top_k: int = 5
+) -> List[Dict[str, str]]:
     """
-    Perform semantic search using the FAISS index.
-    
+    Perform semantic search over indexed document chunks.
+
     Args:
-        index: FAISS index
-        query: Search query
-        meta: Metadata dictionary
-        doc_name: Optional document name to filter results
-        top_k: Number of results to return
-        
+        index: A FAISS index with document embeddings
+        query: The user search query
+        docs_meta: Metadata associated with document chunks
+        file_name: Target document
+        top_k: Number of top matches to return
+
     Returns:
-        List of search results, each containing:
-        - text: The chunk text
-        - page: Page number
-        - score: Similarity score
+        List of matched chunks with score and page info
     """
-    # Generate query embedding
-    model = get_model()
-    query_embedding = model.encode([query], convert_to_numpy=True)
-    
-    # Search
-    scores, indices = index.search(query_embedding, top_k)
-    
-    # Format results
+    query_vector = embed_texts([query])
+    scores, indices = index.search(query_vector, top_k)
+
     results = []
-    for score, idx in zip(scores[0], indices[0]):
-        if idx >= len(meta["chunks"]):  # Safety check
-            continue
-            
-        chunk = meta["chunks"][idx]
-        
-        # Filter by document name if specified
-        if doc_name and chunk["metadata"]["source"] != doc_name:
-            continue
-            
-        results.append({
-            "text": chunk["text"],
-            "page": chunk["page"],
-            "score": float(score),
-            "metadata": chunk["metadata"]
-        })
-    
-    return results 
+    for idx, score in zip(indices[0], scores[0]):
+        if idx < len(docs_meta[file_name]):
+            chunk_meta = docs_meta[file_name][idx]
+            results.append({
+                "score": round(float(score), 3),
+                "page": chunk_meta["page"],
+                "excerpt": chunk_meta["text"][:300] + "..." if len(chunk_meta["text"]) > 300 else chunk_meta["text"]
+            })
+
+    return results
