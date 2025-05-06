@@ -8,9 +8,10 @@ language model, extracting summaries, risk scores, and critical clauses.
 from typing import List, Dict, Any
 import os
 import json
+import re
 import requests
 from pathlib import Path
-import streamlit as st  # ✅ required for st.secrets and logging
+import streamlit as st  # required for secrets and UI debug
 
 # Load prompts
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -68,6 +69,11 @@ def _call_deepseek(
 
     return response.json()["choices"][0]["text"]
 
+def extract_json_array(text: str) -> str:
+    """Extract the first JSON array found in a string."""
+    match = re.search(r"\[\s*{.*?}\s*\]", text, re.DOTALL)
+    return match.group(0) if match else "[]"
+
 def run_full_analysis(
     chunks: List[Dict[str, Any]],
     model_name: str,
@@ -97,20 +103,21 @@ def run_full_analysis(
     clause_response = _call_deepseek(clause_prompt, model_name, temperature)
 
     try:
-        clauses = json.loads(clause_response)
+        cleaned_json = extract_json_array(clause_response)
+        clauses = json.loads(cleaned_json)
     except json.JSONDecodeError as e:
-        st.warning("⚠️ Failed to parse clauses. Showing raw model output.")
-        print("❌ JSONDecodeError in clause_response:", e)
-        print("↪️ Raw output:", clause_response[:500])
+        st.warning("⚠️ Failed to parse clause list. Showing raw output.")
 
-        # Optional debug view in Streamlit
+        # Debug info in logs + interface
+        print("❌ JSONDecodeError:", e)
+        print("↪️ Raw clause_response:", clause_response[:500])
         st.expander("🔍 Raw clause response").code(clause_response)
 
         clauses = [{
             "clause_type": "Unknown",
             "risk_level": "Medium",
             "page": 1,
-            "excerpt": clause_response.strip(),
+            "excerpt": clause_response.strip()[:300],
             "justification": "Raw model output (unparsed)"
         }]
 
