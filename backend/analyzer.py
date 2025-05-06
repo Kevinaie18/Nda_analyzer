@@ -21,37 +21,32 @@ def _load_prompt(name: str) -> str:
     base_prompt = (PROMPTS_DIR / f"{name}.txt").read_text().strip()
     
     if name == "clause_extractor":
-        # Add JSON formatting wrapper
+        # Add JSON formatting wrapper with specific newline avoidance instructions
         base_prompt += """
 
 RESPONSE FORMAT REQUIREMENTS:
 You must respond ONLY with a valid JSON array of clause objects with NO additional text.
 Do not include markdown formatting, explanation text, or code blocks.
 
+IMPORTANT FORMATTING:
+- Format as a compact JSON with minimal whitespace
+- DO NOT include newlines before JSON keys (e.g., no '\n "clause_type"')
+- Keep all JSON keys on the same line as their opening braces
+- Avoid multi-line formatting within JSON objects
+
 JSON SCHEMA:
 [
-  {
-    "clause_type": string,          // Type of legal clause
-    "risk_level": "High" | "Medium" | "Low",  // Risk assessment
-    "page": number,                 // Page number where clause appears
-    "excerpt": string,              // Extract of max 40 words
-    "justification": string         // Why this clause has the assigned risk level
-  },
-  // Additional clause objects as needed
+  {"clause_type": string, "risk_level": "High" | "Medium" | "Low", "page": number, "excerpt": string, "justification": string},
+  {"clause_type": string, "risk_level": "High" | "Medium" | "Low", "page": number, "excerpt": string, "justification": string}
 ]
 
 EXAMPLE RESPONSE:
 [
-  {
-    "clause_type": "Non-compete",
-    "risk_level": "High",
-    "page": 2,
-    "excerpt": "Party shall not engage in similar business for 5 years globally",
-    "justification": "Duration and scope are overly restrictive"
-  }
+  {"clause_type": "Non-compete", "risk_level": "High", "page": 2, "excerpt": "Party shall not engage in similar business for 5 years globally", "justification": "Duration and scope are overly restrictive"},
+  {"clause_type": "Confidentiality", "risk_level": "Medium", "page": 1, "excerpt": "Information remains confidential for 10 years", "justification": "Standard but lengthy duration"}
 ]
 
-Return ONLY the JSON array.
+Return ONLY the JSON array with a single-line format per object.
 """
     
     return base_prompt
@@ -105,6 +100,19 @@ def _call_deepseek(
 
     return response.json()["choices"][0]["text"]
 
+def fix_newline_json_issues(text: str) -> str:
+    """Fix JSON with newline issues before keys."""
+    # Replace newlines before keys (your specific '\n "clause_type"' error)
+    fixed_text = re.sub(r'(\s*)\n(\s*)"([^"]+)"(\s*):',  r'\1"\3"\4:', text)
+    
+    # Replace other common JSON newline issues
+    fixed_text = re.sub(r',(\s*)\n(\s*)}', r',\1}', fixed_text)
+    fixed_text = re.sub(r'(\s*)\n(\s*),', r'\1,', fixed_text)
+    fixed_text = re.sub(r'(\{)(\s*)\n(\s*)', r'\1\2', fixed_text)
+    fixed_text = re.sub(r'(\[)(\s*)\n(\s*)', r'\1\2', fixed_text)
+    
+    return fixed_text
+
 def extract_json_array(text: str) -> str:
     """
     Extract valid JSON array from model output with robust handling of various formats.
@@ -128,6 +136,8 @@ def extract_json_array(text: str) -> str:
         try:
             # Validate it's actually JSON
             json_str = code_match.group(1)
+            # Fix newline issues first
+            json_str = fix_newline_json_issues(json_str)
             json.loads(json_str)  # Test if valid
             return json_str
         except json.JSONDecodeError:
@@ -139,6 +149,8 @@ def extract_json_array(text: str) -> str:
     if array_match:
         try:
             json_str = array_match.group(0)
+            # Fix newline issues first
+            json_str = fix_newline_json_issues(json_str)
             json.loads(json_str)  # Test if valid
             return json_str
         except json.JSONDecodeError:
@@ -149,12 +161,17 @@ def extract_json_array(text: str) -> str:
     if json_like:
         potential_json = json_like.group(1)
         
+        # Fix newline issues first - specifically target the error case
+        potential_json = fix_newline_json_issues(potential_json)
+        
         # Fix common JSON issues
         fixes = [
             (r',\s*\]', ']'),                  # Remove trailing commas
             (r'(["\w])\s+([{\["]))', r'\1, \2'),  # Add missing commas
             (r'\\n\s*"', ' "'),                # Fix newline issues
             (r'"\s*:\s*"([^"]*?)"([,}])', r'": "\1"\2'),  # Fix quote nesting
+            (r'\n\s*"', '"'),                  # Fix newlines before keys
+            (r'"\n\s*:', '":'),                # Fix newlines after keys
         ]
         
         for pattern, replacement in fixes:
@@ -163,6 +180,21 @@ def extract_json_array(text: str) -> str:
         try:
             json.loads(potential_json)  # Test if valid
             return potential_json
+        except json.JSONDecodeError:
+            pass
+    
+    # If all else fails, try aggressive newline removal
+    json_like = re.search(r"(\[\s*\{.*\}\s*\])", text, re.DOTALL)
+    if json_like:
+        aggressive_fix = json_like.group(1)
+        # Replace all newlines with spaces
+        aggressive_fix = re.sub(r'\n', ' ', aggressive_fix)
+        # Compact multiple spaces
+        aggressive_fix = re.sub(r'\s+', ' ', aggressive_fix)
+        
+        try:
+            json.loads(aggressive_fix)  # Test if valid
+            return aggressive_fix
         except json.JSONDecodeError:
             pass
     
