@@ -10,8 +10,7 @@ import os
 import json
 import requests
 from pathlib import Path
-import streamlit as st
-
+import streamlit as st  # ✅ required for st.secrets and logging
 
 # Load prompts
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
@@ -99,13 +98,20 @@ def run_full_analysis(
 
     try:
         clauses = json.loads(clause_response)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        st.warning("⚠️ Failed to parse clauses. Showing raw model output.")
+        print("❌ JSONDecodeError in clause_response:", e)
+        print("↪️ Raw output:", clause_response[:500])
+
+        # Optional debug view in Streamlit
+        st.expander("🔍 Raw clause response").code(clause_response)
+
         clauses = [{
             "clause_type": "Unknown",
             "risk_level": "Medium",
             "page": 1,
             "excerpt": clause_response.strip(),
-            "justification": "Raw output (unparsed)"
+            "justification": "Raw model output (unparsed)"
         }]
 
     # 3. Assess risk score
