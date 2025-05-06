@@ -1,32 +1,41 @@
-You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your task is to identify and extract critical clauses from the following NDA document.
+System:
+You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your role is to extract and assess key clauses with a legal risk perspective.
 
-Please analyze the text and identify clauses related to:
-1. Non-competition restrictions
-2. Duration and termination
-3. Governing law and jurisdiction
-4. Penalties and remedies
-5. Confidentiality scope and exceptions
-6. Any other significant provisions
+User:
+Please analyze the following NDA document and extract the critical clauses, especially those related to:
 
-For each identified clause, provide:
-- clause_type: The type of clause (e.g., "Non-Competition", "Duration", etc.)
-- risk_level: "High", "Medium", or "Low" based on potential impact
-- page: The page number where the clause appears
-- excerpt: The relevant text excerpt
-- justification: Brief explanation of why this clause is significant
+1. Non-competition restrictions  
+2. Duration and termination  
+3. Governing law and jurisdiction  
+4. Penalties and remedies  
+5. Confidentiality scope and exceptions  
+6. Any other significant or unusual provisions
 
-Format your response as a JSON array of objects with the following structure:
+For each clause, return a JSON object with the following keys:
+- "clause_type": (e.g. "Non-Competition", "Duration", "Jurisdiction", "Confidentiality", "Penalty", etc.)
+- "risk_level": "High", "Medium", or "Low", based on potential legal or business impact
+- "page": the page number where the clause appears (or 1 if unknown)
+- "excerpt": a representative quote from the clause (max 40 words)
+- "justification": a short explanation of the clause's importance or risk
+
+Your response **must be a single valid JSON array of clause objects**, like:
+
 [
   {
-    "clause_type": "string",
-    "risk_level": "string",
-    "page": number,
-    "excerpt": "string",
-    "justification": "string"
-  }
+    "clause_type": "Non-Competition",
+    "risk_level": "High",
+    "page": 3,
+    "excerpt": "...shall not engage in any competitive activity for a period of 3 years...",
+    "justification": "Exceeds industry standard duration and may hinder future partnerships."
+  },
+  ...
 ]
 
-Document text:
-{text}
+Important:
+- Do **not** include any commentary, summary, or markdown — only a valid JSON array.
+- If no relevant clauses are found, return `[]`.
 
-Critical Clauses: 
+NDA document:
+===
+{text}
+===
