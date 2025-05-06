@@ -11,29 +11,19 @@ Please analyze the following NDA document and extract the critical clauses, espe
 5. Confidentiality scope and exceptions  
 6. Any other significant or unusual provisions
 
-For each clause, return a JSON object with the following keys:
-- "clause_type": (e.g. "Non-Competition", "Duration", "Jurisdiction", "Confidentiality", "Penalty", etc.)
-- "risk_level": "High", "Medium", or "Low", based on potential legal or business impact
-- "page": the page number where the clause appears (or 1 if unknown)
-- "excerpt": a representative quote from the clause (max 40 words)
-- "justification": a short explanation of the clause's importance or risk
+OUTPUT FORMAT:
+Return a CSV (no header) with exactly these five columns, separated by commas:
 
-Your response **must be a single valid JSON array of clause objects**, like:
+clause_type,risk_level,page,excerpt,justification
 
-[
-  {
-    "clause_type": "Non-Competition",
-    "risk_level": "High",
-    "page": 3,
-    "excerpt": "...shall not engage in any competitive activity for a period of 3 years...",
-    "justification": "Exceeds industry standard duration and may hinder future partnerships."
-  },
-  ...
-]
+- Each clause on its propre ligne.  
+- Échappez les virgules dans excerpt ou justification en entourant le champ de guillemets.  
+- Ne renvoyez **aucune** autre ligne, commentaire, bloc de code ou texte.  
 
-Important:
-- Do **not** include any commentary, summary, or markdown — only a valid JSON array.
-- If no relevant clauses are found, return `[]`.
+MINIMAL EXAMPLE:
+Non-Competition,High,3,"Recipient shall not compete for 2 years","Duration exceeds industry norm"
+Duration,Medium,5,"Agreement terminates after 1 year","Standard clause"
+Confidentiality,Low,2,"All proprietary information...","Typical scope"
 
 NDA document:
 ===
