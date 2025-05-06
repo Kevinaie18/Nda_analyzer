@@ -5,7 +5,7 @@ This module provides functionality to analyze NDA documents using the DeepSeek
 language model, extracting summaries, risk scores, and critical clauses.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import os
 import json
 import re
@@ -70,27 +70,22 @@ def _call_deepseek(
         "Content-Type": "application/json"
     }
     
-    # Try to use different parameters based on whether we're expecting JSON
+    # Determine if we expect JSON
     json_expected = "json" in prompt.lower() or "array" in prompt.lower()
     
     data = {
         "model": model_name,
         "prompt": prompt,
-        "temperature": 0.0 if json_expected else temperature,  # Force 0 temp for JSON
+        "temperature": 0.0 if json_expected else temperature,
         "max_tokens": 2048,
         "top_p": 1,
         "top_k": 40
     }
     
-    # If expecting JSON and API supports response format, specify it
+    # If API supports a JSON response hint, include it
     if json_expected:
-        try:
-            # Add response_format if we're requesting JSON
-            data["response_format"] = {"type": "json_object"}
-        except Exception:
-            # If API doesn't support this parameter, continue without it
-            pass
-
+        data["response_format"] = {"type": "json_object"}
+    
     response = requests.post(
         "https://api.fireworks.ai/inference/v1/completions",
         headers=headers,
@@ -106,295 +101,193 @@ def extract_json_array(text: str) -> str:
     """
     Extract valid JSON array from model output with extremely robust handling.
     Prioritizes recovering valid JSON over preserving exact formatting.
-    
-    Returns:
-        A string containing a valid JSON array, or "[]" if extraction fails
     """
-    # 1. First try direct parsing (best case scenario)
-    try:
-        text = text.strip()
-        if text.startswith('[') and text.endswith(']'):
-            json.loads(text)
-            return text
-    except json.JSONDecodeError:
-        pass
-    
-    # 2. Try extracting from code blocks
-    code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if code_match:
+    # 1. Direct valid JSON?
+    t = text.strip()
+    if t.startswith('[') and t.endswith(']'):
         try:
-            extracted = code_match.group(1).strip()
-            if extracted.startswith('[') and extracted.endswith(']'):
-                json.loads(extracted)
-                return extracted
+            json.loads(t)
+            return t
         except json.JSONDecodeError:
             pass
-    
-    # 3. Try finding array pattern
-    array_match = re.search(r"\[\s*{[\s\S]*}\s*\]", text)
-    if array_match:
+
+    # 2. Inside code fences?
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if m:
+        cand = m.group(1).strip()
+        if cand.startswith('[') and cand.endswith(']'):
+            try:
+                json.loads(cand)
+                return cand
+            except json.JSONDecodeError:
+                pass
+
+    # 3. Simple array pattern
+    m = re.search(r"\[\s*{[\s\S]*}\s*\]", text)
+    if m:
+        cand = m.group(0)
         try:
-            extracted = array_match.group(0)
-            json.loads(extracted)
-            return extracted
+            json.loads(cand)
+            return cand
         except json.JSONDecodeError:
             pass
-    
-    # 4. Aggressive cleanup - remove all formatting that could break JSON
-    json_like = re.search(r"\[\s*{[\s\S]*}\s*\]", text)
-    if json_like:
-        extracted = json_like.group(0)
-        
-        # Remove all whitespace between tokens
-        no_whitespace = re.sub(r'\s+', '', extracted)
-        # Add minimal whitespace back for readability
-        minimal_whitespace = no_whitespace.replace('{', '{ ').replace('}', ' }').replace(',', ', ')
-        
+
+    # 4. Aggressive cleanup
+    if m:
+        extracted = m.group(0)
+        no_ws = re.sub(r'\s+', '', extracted)
+        minimal = no_ws.replace('{', '{ ').replace('}', ' }').replace(',', ', ')
         try:
-            json.loads(minimal_whitespace)
-            return minimal_whitespace
+            json.loads(minimal)
+            return minimal
         except json.JSONDecodeError:
             pass
-    
-    # 5. LAST RESORT: Rebuild the JSON from regex-extracted clauses
+
+    # 5. Last resort: rebuild from fragments
     return rebuild_json_from_fragments(text)
 
 def rebuild_json_from_fragments(text: str) -> str:
     """
     Last resort method to rebuild JSON by extracting key-value pairs.
     """
-    # Look for properties in the format "key": "value" or "key":value
     clauses = []
-    
-    # Find anything that looks like the start of a JSON object
-    object_matches = re.finditer(r'{(?:[^{}]|(?R))*}', text, re.DOTALL)
-    
-    for obj_match in object_matches:
-        obj_text = obj_match.group(0)
-        
-        # Extract key-value pairs
-        clause = {}
-        
-        # Extract clause_type
-        type_match = re.search(r'"clause_type"\s*:\s*"([^"]*)"', obj_text)
-        if type_match:
-            clause["clause_type"] = type_match.group(1)
-        else:
-            continue  # Skip if no clause_type
-        
-        # Extract risk_level
-        risk_match = re.search(r'"risk_level"\s*:\s*"([^"]*)"', obj_text)
-        if risk_match:
-            risk = risk_match.group(1)
-            # Validate risk level
-            if risk.lower() in ["high", "medium", "low"]:
-                clause["risk_level"] = risk.capitalize()
-            else:
-                clause["risk_level"] = "Medium"  # Default
-        else:
-            clause["risk_level"] = "Medium"  # Default
-        
-        # Extract page
-        page_match = re.search(r'"page"\s*:\s*(\d+)', obj_text)
-        if page_match:
-            try:
-                clause["page"] = int(page_match.group(1))
-            except ValueError:
-                clause["page"] = 1
-        else:
-            clause["page"] = 1
-        
-        # Extract excerpt
-        excerpt_match = re.search(r'"excerpt"\s*:\s*"([^"]*)"', obj_text)
-        if excerpt_match:
-            clause["excerpt"] = excerpt_match.group(1)
-        else:
-            clause["excerpt"] = "No excerpt available"
-        
-        # Extract justification
-        just_match = re.search(r'"justification"\s*:\s*"([^"]*)"', obj_text)
-        if just_match:
-            clause["justification"] = just_match.group(1)
-        else:
-            clause["justification"] = "No justification provided"
-        
-        # Add complete clause
-        if len(clause) == 5:  # Only add if we have all fields
-            clauses.append(clause)
-    
-    # If no valid clauses found, try one more approach - look for fields directly
+    # Find JSON-like object blocks
+    for obj in re.finditer(r'{(?:[^{}]|(?R))*}', text, re.DOTALL):
+        o = obj.group(0)
+        c = {}
+        m = re.search(r'"clause_type"\s*:\s*"([^"]*)"', o)
+        if not m:
+            continue
+        c["clause_type"] = m.group(1)
+        m = re.search(r'"risk_level"\s*:\s*"([^"]*)"', o)
+        rl = m.group(1) if m else "Medium"
+        c["risk_level"] = rl.capitalize() if rl.lower() in ["high","medium","low"] else "Medium"
+        m = re.search(r'"page"\s*:\s*(\d+)', o)
+        c["page"] = int(m.group(1)) if m else 1
+        m = re.search(r'"excerpt"\s*:\s*"([^"]*)"', o)
+        c["excerpt"] = m.group(1) if m else "No excerpt"
+        m = re.search(r'"justification"\s*:\s*"([^"]*)"', o)
+        c["justification"] = m.group(1) if m else "No justification"
+        clauses.append(c)
+
+    # If none, try parallel lists
     if not clauses:
-        # Extract all clause types
         types = re.findall(r'"clause_type"\s*:\s*"([^"]*)"', text)
         risks = re.findall(r'"risk_level"\s*:\s*"([^"]*)"', text)
         pages = re.findall(r'"page"\s*:\s*(\d+)', text)
-        excerpts = re.findall(r'"excerpt"\s*:\s*"([^"]*)"', text)
-        justs = re.findall(r'"justification"\s*:\s*"([^"]*)"', text)
-        
-        # Use the minimum length to avoid index errors
-        min_len = min(len(types), len(risks), len(pages), len(excerpts), len(justs))
-        
-        for i in range(min_len):
-            clause = {
+        exs = re.findall(r'"excerpt"\s*:\s*"([^"]*)"', text)
+        js = re.findall(r'"justification"\s*:\s*"([^"]*)"', text)
+        n = min(len(types), len(risks), len(pages), len(exs), len(js))
+        for i in range(n):
+            clauses.append({
                 "clause_type": types[i],
-                "risk_level": risks[i].capitalize() if risks[i].lower() in ["high", "medium", "low"] else "Medium",
-                "page": int(pages[i]) if pages[i].isdigit() else 1,
-                "excerpt": excerpts[i],
-                "justification": justs[i]
-            }
-            clauses.append(clause)
-    
-    # If we found any clauses, convert back to JSON
-    if clauses:
-        return json.dumps(clauses)
-    
-    # If all else fails
-    return "[]"
+                "risk_level": risks[i].capitalize() if risks[i].lower() in ["high","medium","low"] else "Medium",
+                "page": int(pages[i]),
+                "excerpt": exs[i],
+                "justification": js[i]
+            })
+
+    return json.dumps(clauses) if clauses else "[]"
 
 def parse_clauses(json_text: str) -> List[Dict[str, Any]]:
     """
     Parse and validate clause data from JSON text, ensuring all fields are present.
-    
-    Returns:
-        List of validated clause objects
     """
     try:
-        clauses = json.loads(json_text)
-        validated_clauses = []
-        
-        # Ensure we have a list
-        if isinstance(clauses, dict) and "clauses" in clauses:
-            clauses = clauses["clauses"]
-        elif not isinstance(clauses, list):
-            return []
-            
-        # Validate each clause has required fields
-        required_fields = {"clause_type", "risk_level", "page", "excerpt", "justification"}
-        risk_levels = {"High", "Medium", "Low"}
-        
-        for clause in clauses:
-            # Ensure all fields exist
-            if not all(field in clause for field in required_fields):
-                # Add missing fields with default values
-                for field in required_fields:
-                    if field not in clause:
-                        if field == "risk_level":
-                            clause[field] = "Medium"
-                        elif field == "page":
-                            clause[field] = 1
-                        else:
-                            clause[field] = "Not specified"
-            
-            # Validate risk level
-            if clause["risk_level"] not in risk_levels:
-                clause["risk_level"] = "Medium"  # Default to medium
-                
-            # Ensure page is an integer
-            try:
-                clause["page"] = int(clause["page"])
-            except (ValueError, TypeError):
-                clause["page"] = 1
-                
-            validated_clauses.append(clause)
-            
-        return validated_clauses
+        data = json.loads(json_text)
     except json.JSONDecodeError:
         st.error("Failed to parse JSON data")
         return []
 
+    # Unwrap if wrapped
+    if isinstance(data, dict) and "clauses" in data:
+        data = data["clauses"]
+    if not isinstance(data, list):
+        return []
+
+    valid = []
+    for c in data:
+        # Ensure required keys
+        for key, default in [
+            ("clause_type", "Unknown"),
+            ("risk_level", "Medium"),
+            ("page", 1),
+            ("excerpt", ""),
+            ("justification", "")
+        ]:
+            if key not in c:
+                c[key] = default
+        # Normalize types
+        if c["risk_level"] not in ["High","Medium","Low"]:
+            c["risk_level"] = "Medium"
+        try:
+            c["page"] = int(c["page"])
+        except Exception:
+            c["page"] = 1
+        valid.append(c)
+    return valid
+
 def run_full_analysis(
     chunks: List[Dict[str, Any]],
     model_name: str,
-    temperature: float = 0.0,  # Lowered to 0.0 for deterministic output
+    temperature: float = 0.0,  # Deterministic for JSON
     top_k: int = 8
 ) -> Dict[str, Any]:
     """
     Run a full analysis of an NDA document.
-
-    Args:
-        chunks: List of document chunks
-        model_name: Model to use for analysis
-        temperature: Sampling temperature
-        top_k: Number of chunks to use for analysis
-
-    Returns:
-        Dictionary with keys: summary, risk_score, clauses
     """
-    # Combine top_k chunks into one string
     full_text = "\n\n".join(chunk["text"] for chunk in chunks[:top_k])
 
-    # 1. Generate executive summary
+    # 1. Summary
     summary_prompt = _load_prompt("summarizer").format(text=full_text)
     summary = _call_deepseek(summary_prompt, model_name, temperature)
 
-    # 2. Extract critical clauses
+    # 2. Clauses
     clause_prompt = _load_prompt("clause_extractor").format(text=full_text)
-    clause_response = _call_deepseek(clause_prompt, model_name, temperature=0.0)  # Set to 0 for JSON
+    clause_response = _call_deepseek(clause_prompt, model_name, temperature)
 
-    # Debug view in UI
-    with st.expander("🔍 Raw model output (clauses)", expanded=False):
-        st.code(clause_response, language="json")
-
-    try:
-        # Try parsing directly first
-        try:
-            json_array = clause_response.strip()
-            clauses = json.loads(json_array)
-            st.success("✅ Direct JSON parsing successful")
-        except json.JSONDecodeError:
-            # If direct parsing fails, use extraction
-            st.warning("⚠️ Using JSON extraction fallbacks")
-            cleaned_json = extract_json_array(clause_response)
-            clauses = json.loads(cleaned_json)
-            
-        # Additional validation
-        if not isinstance(clauses, list):
-            st.warning("⚠️ Model output not a list, wrapping")
-            clauses = [clauses]
-            
-        # Ensure we have clauses
-        if not clauses:
-            st.warning("⚠️ No valid clauses found")
-            clauses = [{
-                "clause_type": "Unknown",
-                "risk_level": "Medium",
-                "page": 1,
-                "excerpt": "Could not extract valid clauses",
-                "justification": "The document needs manual review"
-            }]
-            
-    except Exception as e:
-        st.error(f"❌ Error processing clauses: {str(e)}")
+    # Show raw for debug
+    with st.expander("🔍 Raw clauses output", expanded=False):
         st.code(clause_response, language="text")
-        
+
+    # Parse clauses
+    try:
+        # Try direct parse
+        clauses = json.loads(clause_response.strip())
+        st.success("✅ Direct JSON parse succeeded")
+    except Exception:
+        st.warning("⚠️ Direct parse failed; using extraction")
+        json_array = extract_json_array(clause_response)
+        clauses = json.loads(json_array)
+
+    clauses = parse_clauses(json.dumps(clauses))
+
+    if not clauses:
+        st.warning("⚠️ No clauses extracted; inserting placeholder")
         clauses = [{
-            "clause_type": "Error",
+            "clause_type": "Unknown",
             "risk_level": "Medium",
             "page": 1,
-            "excerpt": clause_response[:300] if clause_response else "No content",
-            "justification": f"Processing error: {str(e)}"
+            "excerpt": "",
+            "justification": "No clauses could be parsed"
         }]
 
-    # 3. Assess risk score
+    # 3. Risk score
     risk_prompt = _load_prompt("risk_assessor").format(
         text=full_text,
         clauses=json.dumps(clauses, indent=2)
     )
-    risk_response = _call_deepseek(risk_prompt, model_name, temperature)
+    risk_resp = _call_deepseek(risk_prompt, model_name, temperature)
 
-    try:
-        # Try to extract risk score as JSON
-        risk_pattern = r'\{\s*"risk_score"\s*:\s*(\d+)\s*\}'
-        risk_match = re.search(risk_pattern, risk_response)
-        
-        if risk_match:
-            risk_score = int(risk_match.group(1))
-        else:
-            # Try parsing complete response as JSON
-            risk_data = json.loads(risk_response)
-            risk_score = risk_data.get("risk_score", 50)
-    except (json.JSONDecodeError, ValueError):
-        risk_score = 50  # Default risk score
+    # Extract numeric risk_score
+    risk_match = re.search(r'"risk_score"\s*:\s*(\d+)', risk_resp)
+    if risk_match:
+        risk_score = int(risk_match.group(1))
+    else:
+        try:
+            risk_score = json.loads(risk_resp).get("risk_score", 50)
+        except Exception:
+            risk_score = 50
 
     return {
         "summary": summary.strip(),
