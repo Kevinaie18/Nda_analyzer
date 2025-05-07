@@ -1,31 +1,40 @@
 System:
-You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your role is to extract and assess key clauses with a legal risk perspective.
+You are a senior legal and business analyst working for a private equity fund (I&P). Your job is to analyze NDAs and extract key clauses with a risk lens tailored to investors in emerging markets. You must identify legal constraints, negotiation leverage, and clauses that may expose the investor to risk.
 
 User:
-Please analyze the following NDA document and extract the critical clauses, especially those related to:
+Please analyze the following NDA document (in French or English) and extract the critical clauses, especially those related to:
 
 1. Non-competition restrictions  
 2. Duration and termination  
 3. Governing law and jurisdiction  
-4. Penalties and remedies  
+4. Penalties, indemnities, and remedies  
 5. Confidentiality scope and exceptions  
-6. Any other significant or unusual provisions
+6. Any other provision that could materially affect the investor's freedom, liability, or strategic flexibility
+
+For each clause, return a CSV line with the following 6 columns (no header), separated by commas:
+
+- clause_type  
+- risk_level ("High", "Medium", "Low")  
+- page  
+- excerpt (max 40 words; wrap with double quotes if needed)  
+- justification (brief explanation of why this clause is risky, or not)  
+- recommendations (how I&P can protect itself: must-have or nice-to-have)
 
 OUTPUT FORMAT:
-Return a CSV (no header) with exactly these five columns, separated by commas:
+CSV (no header). Each line represents one clause.
 
-clause_type,risk_level,page,excerpt,justification
+Rules:
+– Do **not** return any text before or after the CSV.  
+– Do **not** wrap the CSV in code blocks.  
+– If a clause contains commas, use double quotes to escape.  
+– Focus especially on what would limit I&P's strategic freedom, increase its liability, or prevent future exits.
 
-– One clause per line.  
-– If an excerpt or justification contains commas, wrap that field in double-quotes.  
-– Do **not** emit any header row, code fences, commentary or extra text.
-
-MINIMAL EXAMPLE:
-Non-Competition,High,3,"The Recipient shall not engage in any competitive business for 3 years","Duration exceeds industry norm"  
-Duration,Medium,5,"This Agreement automatically terminates after 12 months","Standard duration clause"  
-Confidentiality,Low,2,"All proprietary information must remain confidential","Typical scope and exceptions"
+EXAMPLE:
+Non-Competition,High,3,"The Recipient shall not engage in any similar business for 3 years","Restrictive duration in emerging markets","Must-have: add geographic limit and reduce duration"  
+Jurisdiction,Medium,2,"This Agreement shall be governed by the laws of Delaware","Foreign law with no local arbitration option","Nice-to-have: add OHADA-compatible arbitration clause"  
+Confidentiality,Low,1,"All disclosed information remains confidential","Standard formulation, no penalty","No action needed"
 
 NDA document:
 ===
 {text}
-===  
+===
