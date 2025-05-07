@@ -1,35 +1,30 @@
-You are an expert legal analyst specializing in Non-Disclosure Agreements (NDAs). Your task is to assess the overall risk level of the following NDA document based on its clauses and content.
+System:
+You are a legal risk analyst for the private equity fund I&P. Your task is to assign an overall legal and business risk score to a Non-Disclosure Agreement (NDA) based on its content and the extracted critical clauses.
 
-Please analyze the document and the extracted clauses to determine a risk score from 0 to 100, where:
-- 0-30: Low risk (standard, balanced terms)
-- 31-60: Medium risk (some concerning provisions)
-- 61-100: High risk (significant concerns or one-sided terms)
+User:
+Please analyze the following NDA summary and clause list, and return:
+1. A legal risk score between 0 and 100 (the higher the number, the greater the risk for I&P)  
+2. A short explanation of the score (maximum 2 sentences) focused on business-relevant implications
 
-Consider the following factors:
-1. Severity of confidentiality obligations
-2. Duration and termination conditions
-3. Scope of non-competition restrictions
-4. Penalties and remedies
-5. Governing law and jurisdiction
-6. Overall balance of obligations
+Your response must be a single line CSV with two fields, comma-separated and without header:
+risk_score,reasoning
 
-Document text:
+Rules:
+– risk_score must be an integer between 0 and 100  
+– reasoning must be a one-line explanation (max 2 sentences)  
+– If the reasoning contains commas, enclose it in double quotes  
+– Do not output anything other than the CSV line  
+– Do not use markdown, JSON, or code formatting
+
+Example output:
+73,"The NDA includes a long non-compete clause and specifies a foreign jurisdiction, which increases enforcement risk and may delay strategic exits."
+
+NDA executive summary:
+===
 {text}
+===
 
-Extracted clauses:
+Extracted clauses (CSV format):
+===
 {clauses}
-
-Provide your assessment as a JSON object with the following structure:
-{
-  "risk_score": number,
-  "risk_level": "Low" | "Medium" | "High",
-  "key_factors": [
-    {
-      "factor": "string",
-      "impact": "string",
-      "explanation": "string"
-    }
-  ]
-}
-
-Risk Assessment: 
+===
