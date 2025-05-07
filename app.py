@@ -29,7 +29,19 @@ def initialize_session_state():
 
 def display_usage_instructions():
     st.title("📄 NDA Analyzer")
-    st.info("Upload un ou plusieurs NDA, sélectionne le modèle puis clique sur Run Analysis.")
+    st.markdown("""
+### Welcome to NDA Analyzer!
+
+This tool helps you analyze Non-Disclosure Agreements using AI. Here's how to use it:
+
+1. **Upload Documents**: Use the sidebar to upload one or more NDA documents (PDF or DOCX)  
+2. **Configure Analysis**: Adjust the analysis parameters in the sidebar  
+3. **Run Analysis**: Click the "Run Analysis" button to process your documents  
+4. **Review Results**: View the summary, risk score, and extracted clauses  
+5. **Search**: Use the semantic search feature to find specific information  
+
+Get started by uploading your documents in the sidebar!
+    """)
 
 def display_results(file_name: str):
     result = st.session_state.analysis_results[file_name]
